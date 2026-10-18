@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+*.duckdb
+data/
+.ruff_cache/
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+evals/recordings/*.jsonl
+!evals/recordings/.gitkeep

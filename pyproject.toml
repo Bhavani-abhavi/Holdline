@@ -1,0 +1,57 @@
+[project]
+name = "holdline"
+version = "0.1.0"
+description = "HoldLine: an AI voice assistant that reserves real bakery inventory over the phone, with guardrails enforced in code."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Bhavani Adula" }]
+# Exact pins: a portfolio project that does not install two months later is worthless.
+dependencies = [
+    "anthropic==1.15.0",
+    "fastapi==0.146.0",
+    "uvicorn==0.54.0",
+    "structlog==26.1.0",
+    "python-dotenv==1.2.4",
+    "pydantic==2.14.1",
+    "pyyaml==6.0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "httpx==0.28.1",
+    "ruff==0.17.1",
+]
+
+[project.scripts]
+holdline = "holdline.run:main"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+holdline = ["schema.sql", "static/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "evals"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP", "N", "SIM"]
+ignore = ["SIM108"]  # ternary rewrites hurt readability for a junior reader
+
+[tool.ruff.lint.per-file-ignores]
+# The spec names these exceptions without an Error suffix; keep the spec's names.
+"src/holdline/exceptions.py" = ["N818"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["error::DeprecationWarning:holdline.*"]
