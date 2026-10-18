@@ -50,6 +50,13 @@ ignore = ["SIM108"]  # ternary rewrites hurt readability for a junior reader
 [tool.ruff.lint.per-file-ignores]
 # The spec names these exceptions without an Error suffix; keep the spec's names.
 "src/holdline/exceptions.py" = ["N818"]
+# Test phrases and eval scenarios are spoken sentences; wrapping them hurts readability.
+"tests/*" = ["E501"]
+# Spoken sentences, tool descriptions and regular expressions do not wrap without losing meaning.
+"src/holdline/prompts.py" = ["E501"]
+"src/holdline/guardrails.py" = ["E501"]
+"src/holdline/tools.py" = ["E501"]
+"evals/*" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
