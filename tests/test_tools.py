@@ -22,6 +22,7 @@ CTX = ToolContext(location_id="marchettis_lincoln_park", call_id="call-1", chann
         ("a couple of almond croissants", "croissant_almond"),
         ("peanut butter cookies", "cookie_pb"),
         ("cheesecake", "cheesecake_ny"),
+        ("chocolat cake", "cake_choc_9"),
     ],
 )
 def test_match_item_clear_cases(db, query, item_id):

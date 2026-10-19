@@ -46,6 +46,8 @@ class TurnResult:
     retried: bool = False
     usage: Usage = field(default_factory=Usage)
     raw_text: str | None = None  # what the model said before any substitution
+    # Violations found in the reply the caller actually heard (after any substitution).
+    delivered_violations: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -133,6 +135,10 @@ class Agent:
         validation = ValidationResult()
 
         for attempt in range(config.GUARDRAIL_MAX_RETRIES + 1):
+            # Recording and replay clients align their scripts on (turn, attempt).
+            begin = getattr(self.llm, "begin_attempt", None)
+            if begin is not None:
+                begin(state.turns, attempt)
             try:
                 final_text, attempt_results, attempt_usage = self._generate(conv, tool_results)
             except LLMUnavailableError as exc:
@@ -315,6 +321,10 @@ class Agent:
     def _deliver(
         self, conv, delivered, tool_results, violations, tier, usage, retried, raw_text
     ) -> TurnResult:
+        if raw_text is None or delivered == raw_text:
+            delivered_violations = list(violations)
+        else:
+            delivered_violations = validate_response(delivered, tool_results, conv.state).violations
         # History must hold what the caller actually heard, not the blocked text, or the
         # model builds its next turn on a claim nobody received.
         if conv.messages and conv.messages[-1]["role"] == "assistant":
@@ -333,4 +343,5 @@ class Agent:
             retried=retried,
             usage=usage,
             raw_text=raw_text,
+            delivered_violations=[v.to_dict() for v in delivered_violations],
         )

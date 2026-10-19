@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HoldLine - Staff</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="brand">
+      <h1>HoldLine <span class="brand-sub">staff</span></h1>
+      <p class="disclosure">Alerts, approvals and deliveries for the counter team. Refreshes every two seconds.</p>
+    </div>
+    <nav class="site-nav" aria-label="Pages">
+      <a href="/">Call</a>
+      <a href="/staff" aria-current="page">Staff</a>
+      <a href="/analytics">Analytics</a>
+      <span id="offline-indicator" class="offline" role="status" hidden>offline</span>
+    </nav>
+  </header>
+
+  <!-- Toasts are appended here by staff.js. aria-live so screen readers announce them. -->
+  <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+
+  <main id="main" class="layout layout-wide">
+    <section class="panel" aria-labelledby="alerts-heading">
+      <h2 id="alerts-heading">Open alerts</h2>
+      <ul id="alerts-list" class="list"><li class="empty">No open alerts.</li></ul>
+    </section>
+
+    <section class="panel" aria-labelledby="approval-heading">
+      <h2 id="approval-heading">Approval queue</h2>
+      <ul id="approval-list" class="list"><li class="empty">Nothing waiting for approval.</li></ul>
+    </section>
+
+    <section class="panel" aria-labelledby="active-heading">
+      <h2 id="active-heading">Active holds</h2>
+      <ul id="active-holds-list" class="list"><li class="empty">No active holds.</li></ul>
+    </section>
+
+    <section class="panel" aria-labelledby="delivery-heading">
+      <h2 id="delivery-heading">Receive delivery</h2>
+      <form id="delivery-form" class="form-grid">
+        <label>Item
+          <select id="delivery-item" required></select>
+        </label>
+        <label>Quantity
+          <input id="delivery-qty" type="number" min="1" step="1" value="12" required>
+        </label>
+        <label>Note
+          <input id="delivery-note" type="text" placeholder="e.g. morning van" autocomplete="off">
+        </label>
+        <div class="controls-row">
+          <button id="delivery-submit" type="submit" class="btn">Record delivery</button>
+        </div>
+        <p id="delivery-status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="counters-heading">
+      <h2 id="counters-heading">Today's counters</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Item</th>
+            <th scope="col" class="num">Received</th>
+            <th scope="col" class="num">Sold</th>
+            <th scope="col" class="num">Held</th>
+            <th scope="col" class="num">Sellable</th>
+          </tr>
+        </thead>
+        <tbody id="counters-body"></tbody>
+      </table>
+    </section>
+
+    <section class="panel" aria-labelledby="orders-heading">
+      <h2 id="orders-heading">Live order feed</h2>
+      <ol id="order-feed" class="list"><li class="empty">No holds placed yet.</li></ol>
+    </section>
+  </main>
+
+  <footer class="site-footer">Demo: mocked POS, one location, no authentication on the staff page.</footer>
+
+  <script src="/static/staff.js"></script>
+</body>
+</html>

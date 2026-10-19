@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HoldLine - Call the bakery</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="brand">
+      <h1>HoldLine <span class="brand-sub">bakery voice assistant</span></h1>
+      <p class="disclosure">You are speaking with an automated assistant. It can check stock and place short holds. A staff member reviews anything it cannot decide on its own.</p>
+    </div>
+    <nav class="site-nav" aria-label="Pages">
+      <a href="/" aria-current="page">Call</a>
+      <a href="/staff">Staff</a>
+      <a href="/analytics">Analytics</a>
+      <span id="offline-indicator" class="offline" role="status" hidden>offline</span>
+    </nav>
+  </header>
+
+  <main id="main" class="layout">
+    <!-- LEFT: the call -->
+    <section class="panel" aria-labelledby="call-heading">
+      <h2 id="call-heading">The call</h2>
+      <p id="voice-warning" class="warning" hidden>Voice input works in Chrome and Edge; type below instead.</p>
+
+      <div class="ptt-wrap">
+        <button id="ptt-button" class="ptt" type="button" aria-pressed="false" aria-describedby="ptt-help">
+          Hold to speak
+        </button>
+        <p id="ptt-help" class="help">Press and hold the button (or hold Space while it is focused). Release to send what you said.</p>
+        <p id="voice-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="controls-row">
+        <button id="mute-toggle" type="button" class="btn btn-secondary" aria-pressed="false">Mute spoken replies</button>
+      </div>
+
+      <ol id="transcript" class="transcript" aria-label="Transcript" aria-live="polite"></ol>
+
+      <form id="chat-form" class="chat-form">
+        <label for="chat-input" class="visually-hidden">Type a message to the assistant</label>
+        <input id="chat-input" type="text" autocomplete="off" placeholder="Type to the assistant..." required>
+        <button id="send-button" type="submit" class="btn">Send</button>
+      </form>
+    </section>
+
+    <!-- RIGHT: the glass box -->
+    <section class="panel" aria-labelledby="glass-heading">
+      <h2 id="glass-heading">The glass box <span class="panel-sub">what the assistant actually did</span></h2>
+      <p class="help"><span id="location-name">Loading location...</span> <span id="location-hours"></span></p>
+
+      <div id="stale-banner" class="banner banner-amber" role="alert" hidden>POS sync is stale: the assistant will not quote numbers</div>
+
+      <h3>Stock</h3>
+      <table class="table" aria-describedby="glass-heading">
+        <thead>
+          <tr><th scope="col">Item</th><th scope="col" class="num">Sellable</th><th scope="col" class="num">On hand</th></tr>
+        </thead>
+        <tbody id="stock-body"></tbody>
+      </table>
+
+      <h3>Active holds</h3>
+      <ul id="holds-list" class="list"><li class="empty">No holds yet.</li></ul>
+
+      <h3>Live feed <span class="panel-sub">tool calls, guardrails, sales, phone and browser</span></h3>
+      <ol id="events-list" class="events" aria-label="Event feed"><li class="empty">Waiting for events...</li></ol>
+
+      <h3>Demo controls</h3>
+      <div class="controls-row">
+        <button id="btn-rush" type="button" class="btn btn-secondary">Simulate a rush</button>
+        <button id="btn-stale" type="button" class="btn btn-secondary">Break the POS sync</button>
+        <button id="btn-resync" type="button" class="btn btn-secondary">Restore sync</button>
+        <button id="btn-reset" type="button" class="btn btn-danger">Reset demo</button>
+      </div>
+      <p id="demo-status" class="status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">Demo: mocked POS, one location, no authentication on the staff page.</footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

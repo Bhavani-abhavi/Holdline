@@ -53,6 +53,8 @@ ALIASES: dict[str, list[str]] = {
 # (which matches both equally) comes back as ambiguous.
 MATCH_MARGIN = 0.15
 MATCH_FLOOR = 0.45
+# Two tokens this similar are the same word mistyped ('chocolat' vs 'chocolate').
+TOKEN_TYPO_RATIO = 0.8
 
 
 @dataclass(frozen=True)
@@ -194,6 +196,17 @@ def _normalise(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _fuzzy_intersection(a: set[str], b: set[str]) -> int:
+    """Count tokens of `b` that have a close match in `a` (handles typos like 'chocolat')."""
+    count = 0
+    for token in b:
+        if token in a or any(
+            difflib.SequenceMatcher(None, token, other).ratio() >= TOKEN_TYPO_RATIO for other in a
+        ):
+            count += 1
+    return count
+
+
 def match_item(conn: sqlite3.Connection, query: str) -> tuple[str, list[dict[str, str]]]:
     """Fuzzy-match spoken words to a catalogue item.
 
@@ -212,18 +225,15 @@ def match_item(conn: sqlite3.Connection, query: str) -> tuple[str, list[dict[str
         for name in names:
             n = _normalise(name)
             n_tokens = set(n.split())
-            # Jaccard overlap: measured against both sides so a short alias that is
+            matched = _fuzzy_intersection(q_tokens, n_tokens)
+            # Jaccard overlap measured against both sides, so a short alias that is
             # merely contained in a long query does not score as a full match.
-            overlap = len(q_tokens & n_tokens) / max(1, len(q_tokens | n_tokens))
+            overlap = matched / max(1, len(q_tokens) + len(n_tokens) - matched)
             contained = 1.0 if n and (n in q or q in n) else 0.0
             # A longer alias contained in the query beats a shorter one: "almond
             # croissant" must outrank the bare "croissant" alias.
             coverage = min(1.0, len(n_tokens) / max(1, len(q_tokens)))
-            token_score = 0.6 * overlap + 0.4 * contained * coverage
-            # Character similarity only rescues typos; it is discounted so that
-            # "plain croissant" cannot outscore a full token match on letters alone.
-            typo_score = 0.75 * difflib.SequenceMatcher(None, q, n).ratio()
-            best = max(best, token_score, typo_score)
+            best = max(best, 0.6 * overlap + 0.4 * contained * coverage)
         scored.append((best, row["id"], row["name"]))
     scored.sort(reverse=True)
     top = scored[0]

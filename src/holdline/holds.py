@@ -243,8 +243,12 @@ def create_hold(
             {
                 "hold_id": hold_id,
                 "item_id": item_id,
+                "item_name": avail.item_name,
                 "quantity": quantity,
                 "status": status,
+                "customer_name": customer_name,
+                "dietary_note": dietary_note,
+                "pickup_at": clock.iso(pickup_at),
                 "approval_reasons": reasons,
                 "phone_fp": phone_fingerprint(customer_phone),
             },
