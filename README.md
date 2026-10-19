@@ -81,8 +81,8 @@ flowchart TB
 ```python
 @pytest.mark.parametrize("repetition", range(20))
 def test_only_one_caller_gets_the_last_cake(db, location_id, repetition):
-    inventory.set_stock(db, location_id, "cake_choc_9", 2)   # buffer 1 -> exactly 1 sellable
-    results = _race(db, location_id, "cake_choc_9")           # 10 threads, one barrier
+    inventory.set_stock(db, location_id, "cake_choc_9", 2)  # buffer 1 -> exactly 1 sellable
+    results = _race(db, location_id, "cake_choc_9")  # 10 threads, one barrier
     winners = [r for r in results if r.ok]
     assert len(winners) == 1
     assert all(r.reason == "insufficient" for r in results if not r.ok)
