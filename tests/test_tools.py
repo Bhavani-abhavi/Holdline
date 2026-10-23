@@ -42,7 +42,7 @@ def test_parse_pickup_forms():
     now = datetime(2026, 10, 18, 15, 0, tzinfo=UTC)  # 10:00 Chicago
     tz = ZoneInfo("America/Chicago")
     assert parse_pickup("5pm", now, tz).astimezone(tz).hour == 17
-    assert parse_pickup("five", now, tz) is None  # words are the model's job; it sends '5pm'
+    assert parse_pickup("five", now, tz).astimezone(tz).hour == 17  # bakery callers mean 5pm
     assert parse_pickup("17:30", now, tz).astimezone(tz).minute == 30
     assert parse_pickup("in 45 minutes", now, tz) == now.replace(hour=15, minute=45)
     assert parse_pickup("in 2 hours", now, tz).hour == 17

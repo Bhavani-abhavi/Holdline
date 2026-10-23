@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from holdline import clock, events, holds
+from holdline import clock, config, events, holds
 from holdline.availability import sellable
 from holdline.db import Database
 from holdline.dietary import check_dietary_info
@@ -128,7 +128,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "item_id": {"type": "string", "description": "item_id from check_availability"},
-                "quantity": {"type": "integer", "minimum": 1},
+                "quantity": {"type": "integer", "description": "At least 1."},
                 "pickup_time": {
                     "type": "string",
                     "description": (
@@ -249,37 +249,121 @@ def match_item(conn: sqlite3.Connection, query: str) -> tuple[str, list[dict[str
 # --- Pickup time parsing ------------------------------------------------------------
 
 
-def parse_pickup(text: str, now: datetime, tz: ZoneInfo) -> datetime | None:
-    """Turn '5pm', '17:30', 'in 45 minutes', 'noon' or ISO 8601 into a UTC datetime.
+SPOKEN_NUMBERS = {
+    "a": 1,
+    "an": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "fifteen": 15,
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "forty-five": 45,
+    "forty five": 45,
+    "fifty": 50,
+    "sixty": 60,
+    "a couple of": 2,
+    "a couple": 2,
+    "half an": 0.5,
+    "half a": 0.5,
+}
+ASAP_RE = re.compile(
+    r"^(?:now|right (?:now|away)|asap|straight away|on my way|i'?m on my way|immediately)$"
+)
+SOON_RE = re.compile(
+    r"^(?:soon|shortly|in a bit|in a (?:few|couple)(?: of)? (?:minutes|mins)|in a few|a few minutes)$"
+)
 
-    Returns None when the text cannot be understood; the tool then asks the model
-    to clarify rather than guessing a time.
+
+def _spoken_number(text: str) -> float | None:
+    text = text.strip()
+    if text.isdigit():
+        return float(text)
+    return SPOKEN_NUMBERS.get(text)
+
+
+def _at_local(
+    local_now: datetime, hour: int, minute: int, *, days_ahead: int = 0
+) -> datetime | None:
+    if hour > 23 or minute > 59:
+        return None
+    target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return (target + timedelta(days=days_ahead)).astimezone(clock.UTC)
+
+
+def _bakery_hour(hour: int, suffix: str) -> int:
+    """A bakery caller saying "five" means 5pm; "eight" means 8am. The shop opens at 7."""
+    if suffix == "pm" and hour < 12:
+        return hour + 12
+    if suffix == "am" and hour == 12:
+        return 0
+    if not suffix and hour < 7:
+        return hour + 12
+    return hour
+
+
+def parse_pickup(text: str, now: datetime, tz: ZoneInfo) -> datetime | None:
+    """Turn what a caller says about pickup into a UTC datetime.
+
+    Understands: "now", "on my way", "soon", "in twenty minutes", "in an hour",
+    "in half an hour", "5pm", "5:30 pm", "17:30", "five", "around five",
+    "half past four", "quarter to six", "noon", "tomorrow at two", ISO 8601.
+    An empty string means the caller is coming shortly. Returns None only when
+    the words cannot be understood; the tool then asks rather than guessing.
     """
-    t = text.strip().lower()
+    t = re.sub(
+        r"\s+", " ", text.strip().lower().replace("o'clock", "").replace("o’clock", "")
+    ).strip()
     local_now = now.astimezone(tz)
-    m = re.fullmatch(r"in (\d+) ?(minutes?|mins?|hours?|hrs?)", t)
+    if not t or SOON_RE.match(t):
+        return now + timedelta(minutes=config.DEFAULT_PICKUP_MINUTES)
+    if ASAP_RE.match(t):
+        return now
+
+    m = re.fullmatch(r"in (?:about |around |like )?(.+?) ?(minutes?|mins?|hours?|hrs?)", t)
     if m:
-        n = int(m.group(1))
-        delta = timedelta(hours=n) if m.group(2).startswith("h") else timedelta(minutes=n)
-        return now + delta
-    if t in {"noon", "12pm", "12 pm", "midday"}:
-        return local_now.replace(hour=12, minute=0, second=0, microsecond=0).astimezone(clock.UTC)
-    m = re.fullmatch(r"(?:at |around |about )?(\d{1,2})(?::(\d{2}))? ?(am|pm|a\.m\.|p\.m\.)?", t)
-    if m:
-        hour = int(m.group(1))
-        minute = int(m.group(2) or 0)
-        suffix = (m.group(3) or "").replace(".", "")
-        if suffix == "pm" and hour < 12:
-            hour += 12
-        if suffix == "am" and hour == 12:
-            hour = 0
-        if not suffix and hour < 7:  # a bakery caller saying "five" means 5pm, not 5am
-            hour += 12
-        if hour > 23 or minute > 59:
+        n = _spoken_number(m.group(1))
+        if n is None:
             return None
-        return local_now.replace(hour=hour, minute=minute, second=0, microsecond=0).astimezone(
-            clock.UTC
-        )
+        return now + (timedelta(hours=n) if m.group(2).startswith("h") else timedelta(minutes=n))
+
+    days_ahead = 0
+    if t.startswith("tomorrow"):
+        days_ahead = 1
+        t = re.sub(r"^tomorrow,? ?(?:at |around |about )?", "", t).strip() or "noon"
+    t = re.sub(r"^(?:at|around|about|by|before) ", "", t)
+
+    if t in {"noon", "12pm", "12 pm", "midday"}:
+        return _at_local(local_now, 12, 0, days_ahead=days_ahead)
+    m = re.fullmatch(r"(half|quarter) (past|to) (\w+)", t)
+    if m:
+        base = _spoken_number(m.group(3))
+        if base is None:
+            return None
+        hour = _bakery_hour(int(base), "")
+        if m.group(1) == "half":
+            return _at_local(local_now, hour, 30, days_ahead=days_ahead)
+        if m.group(2) == "past":
+            return _at_local(local_now, hour, 15, days_ahead=days_ahead)
+        return _at_local(local_now, hour - 1, 45, days_ahead=days_ahead)
+    m = re.fullmatch(r"(\d{1,2}|[a-z]+)(?::(\d{2}))? ?(am|pm|a\.m\.|p\.m\.)?(?: ?ish)?", t)
+    if m:
+        base = _spoken_number(m.group(1))
+        if base is None:
+            return None
+        suffix = (m.group(3) or "").replace(".", "")
+        hour = _bakery_hour(int(base), suffix)
+        return _at_local(local_now, hour, int(m.group(2) or 0), days_ahead=days_ahead)
     try:
         dt = datetime.fromisoformat(text.strip())
     except ValueError:

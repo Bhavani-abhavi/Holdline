@@ -106,10 +106,13 @@ def needs_approval(
     buffer = conn.execute("SELECT safety_buffer FROM items WHERE id = ?", (item_id,)).fetchone()
     if on_hand <= int(buffer["safety_buffer"]):
         reasons.append("item_at_or_below_buffer")
-    assessment = assess_request(dietary_note)
+    # Keyed on the ASSESSED severity, not on whether text is present: the commonest
+    # dietary note is "no allergies", and parking every such hold for approval would
+    # fill the queue with ordinary orders until staff stopped reading it.
+    assessment = assess_request(dietary_note, direct_answer=True)
     if assessment.severity == "allergy" and config.ALLERGY_ALWAYS_ESCALATE:
         reasons.append("allergy_declared")
-    elif dietary_note and dietary_note.strip():
+    elif assessment.severity == "preference":
         reasons.append("dietary_note_present")
     return reasons
 
@@ -131,8 +134,12 @@ def create_hold(
     if quantity <= 0:
         return HoldResult(ok=False, reason="invalid_quantity", message="Quantity must be positive.")
     now = clock.now()
-    if pickup_at < now - timedelta(minutes=1):
+    # "Now" resolves to the instant the parser ran, which is always a few microseconds
+    # before this clock read. Inside the tolerance the pickup is clamped to now; a
+    # genuinely misread time is hours out, not seconds, and is still refused.
+    if pickup_at < now - timedelta(seconds=config.PICKUP_PAST_TOLERANCE_SECONDS):
         return HoldResult(ok=False, reason="pickup_in_past", message="Pickup time is in the past.")
+    pickup_at = max(pickup_at, now)
 
     key = idempotency_key(call_id, location_id, item_id, quantity, pickup_at)
 

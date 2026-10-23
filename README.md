@@ -161,6 +161,14 @@ pytest                          # no network, no API key needed
 ruff check . && ruff format --check .
 ```
 
+## The earlier build
+
+The first HoldLine build was made in Antigravity and reached Phase 5. Its root documents and tests
+were uploaded on 2026-10-23 and live under `legacy/antigravity/` (and unchanged on the
+`antigravity-upload` branch); its `src/`, `docs/` and `evals/` folders have not been uploaded yet.
+Its defect log was mined for this rebuild: entries 10 to 14 in `DEFECTS.md` and
+`tests/test_ported_from_antigravity.py` came from it.
+
 ## Honest limitations
 
 Mocked POS. Browser voice is Chrome and Edge only. One location served by the app. No

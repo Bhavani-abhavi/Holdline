@@ -23,6 +23,13 @@ load_dotenv()
 # units. Beyond it the assistant refuses to state ANY number (availability.py).
 STALE_THRESHOLD_SECONDS = 600
 
+# A pickup time this far in the past is clamped to now instead of refused. "I'm on my
+# way" resolves to the instant the parser ran; a genuinely misread time is hours out.
+PICKUP_PAST_TOLERANCE_SECONDS = 120
+
+# When the caller names no time ("coming shortly"), assume this many minutes.
+DEFAULT_PICKUP_MINUTES = 15
+
 # Grace window past the stated pickup time before a hold is released. 45 minutes
 # covers normal lateness without tying up stock for the evening.
 DEFAULT_HOLD_MINUTES = 45

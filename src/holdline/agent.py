@@ -226,7 +226,7 @@ class Agent:
 
     def _absorb_customer_text(self, state: ConversationState, text: str) -> None:
         state.customer_numbers = customer_numbers(text)
-        assessment = assess_request(text)
+        assessment = assess_request(text, direct_answer=False)
         if assessment.severity == "allergy":
             state.declared_dietary = text
             state.dietary_severity = "allergy"
@@ -248,7 +248,7 @@ class Agent:
                 state.availability_known = False
         elif result.name == "create_hold":
             note = result.input.get("dietary_note")
-            if note and assess_request(str(note)).severity == "allergy":
+            if note and assess_request(str(note), direct_answer=True).severity == "allergy":
                 state.declared_dietary = str(note)
                 state.dietary_severity = "allergy"
             if out.get("ok") and out.get("hold_id") is not None:

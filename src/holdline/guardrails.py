@@ -146,12 +146,29 @@ ADDRESS_SUFFIX = re.compile(
     r"(?i:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane)\b",
 )
 ONE_IDIOM_PREFIX = re.compile(
-    r"\b(?:which|that|this|the|another|each|any|no|some|every|only|other|chocolate|lemon|big|small|"
+    r"\b(?:which|that|this|the|another|each|any|no|some|every|other|chocolate|lemon|big|small|"
     r"little|right|wrong|same|first|last|next|good|better|best)\s*$",
     re.IGNORECASE,
 )
 ONE_IDIOM_SUFFIX = re.compile(
     r"^\s*(?:moment|second|sec|minute|of|more thing|thing|way|day)\b", re.IGNORECASE
+)
+# "if someone buys one at the counter": a third-party subject makes "one" a pronoun.
+# The subject list is third-party only; "we have one left" stays a real stock claim.
+THIRD_PARTY_ONE_RE = re.compile(
+    r"\b(?:someone|somebody|anyone|anybody|people|folks|they|a customer|customers|a walk-in|walk-ins)\s+"
+    r"(?:\w+\s+){0,2}?(?:buys?|takes?|grabs?|gets?|picks? up|wants?|snags?|nabs?)\s+(?:the last )?$",
+    re.IGNORECASE,
+)
+# With a dietary need declared, generic reassurance is a safety judgment in disguise.
+REASSURANCE_RE = re.compile(
+    r"\b(?:(?:she|he|they|you|it|that|this)(?:'ll| will|'d| would|'s| is|'re| are)? (?:all )?be (?:fine|ok|okay|good|alright|safe)|"
+    r"(?:is|it's|that's|you're|she's|he's|they're) (?:totally |completely |perfectly )?(?:fine|ok|okay|safe|good to go)|"
+    r"no (?:need to )?worr(?:y|ies)|don'?t worry|nothing to worry about|you'?re (?:all )?good)\b",
+    re.IGNORECASE,
+)
+OCCASION_RE = re.compile(
+    r"\b(?:party|birthday|wedding|pickup|pick up|collection|order|time|five|noon)\b", re.IGNORECASE
 )
 PRONOUN_ONE_SUFFIX = re.compile(r"^\s*(?:aside|back|for you|under|on hold|ready)\b", re.IGNORECASE)
 
@@ -193,7 +210,7 @@ ALLERGEN_WORDS = (
 ABSENCE_PATTERNS = [
     rf"\b(?:{ALLERGEN_WORDS})[- ]free\b",
     r"\bsafe (?:for|to eat|to have|for (?:you|her|him|them|your))\b",
-    r"\bsuitable for\b",
+    r"\bsuitable for (?:you|her|him|them|your|someone|anyone|people|a (?:\w+ )?allerg|\w+ allerg|c(?:oe|e)liac|vegans?|vegetarians?)\b",
     r"\b(?:fine|ok|okay|good|alright) for (?:you|her|him|them|your|someone|people|anyone|a)\b",
     rf"\b(?:doesn'?t|does not|don'?t|do not|won'?t|will not|didn'?t) (?:contain|have|include|use) (?:any )?(?:{ALLERGEN_WORDS})\b",
     rf"\bno (?:{ALLERGEN_WORDS}) (?:in|at all|whatsoever|inside)\b",
@@ -222,6 +239,12 @@ DISCLAIMER_RE = re.compile(
 )
 DISCLAIMER_WINDOW_WORDS = 9
 
+# "almond and butter" names two croissants, not two ingredients.
+PRODUCT_NOUN_AFTER = re.compile(
+    r"^\s*(?:and \w+ )?(?:croissants?|cakes?|cookies?|loa(?:f|ves)|breads?|brownies?|lattes?|"
+    r"cheesecakes?|baguettes?|muffins?|scones?|danish(?:es)?|pastr(?:y|ies)|rolls?|buns?)\b",
+    re.IGNORECASE,
+)
 PRESENCE_RE = re.compile(
     rf"\b(?:contains?|has|have|made with|includes?|there'?s|there is|there are|got|uses?|with)\b"
     rf"(?:\s+(?:some|a bit of|a little|real|fresh|both|also|and|,|or|the|a|an|its|their|no))*"
@@ -360,6 +383,8 @@ def _is_false_positive(text: str, start: int, end: int, raw: str, value: int) ->
         if TIME_CUE_RE.search(sentence_so_far):
             return True
     if raw.lower() == "one" and (ONE_IDIOM_PREFIX.search(before) or ONE_IDIOM_SUFFIX.match(after)):
+        return True
+    if raw.lower() == "one" and THIRD_PARTY_ONE_RE.search(before):
         return True
     if raw.lower() in {"one", "two"} and PRONOUN_ONE_SUFFIX.match(after):
         # "set one aside", "hold two for you": the number IS a proposal, keep it.
@@ -501,6 +526,19 @@ def validate_response(
             result.violations.append(Violation("allergen_absence_claim", 2, sentence.strip()))
             break
 
+    if state.dietary_severity != "none":
+        for sentence in _sentences(text):
+            match = REASSURANCE_RE.search(sentence)
+            if (
+                match
+                and not _has_disclaimer(sentence, match.start())
+                and not OCCASION_RE.search(sentence[match.end() : match.end() + 40])
+            ):
+                result.violations.append(
+                    Violation("reassurance_after_dietary_declaration", 2, sentence.strip())
+                )
+                break
+
     allergy_declared = state.dietary_severity == "allergy"
     holds_ok = successful_holds(tool_results_this_turn)
     if allergy_declared:
@@ -535,6 +573,11 @@ def validate_response(
             result.violations.append(Violation("stale_quantity", 1, mention.sentence))
             continue
         if mention.is_proposal:
+            # Offering exactly one unit asserts nothing about how many exist, and
+            # create_hold settles it; so "shall I hold one?" needs no ceiling. That is
+            # what lets the assistant ask "which one?" after an ambiguous lookup.
+            if mention.value == 1:
+                continue
             if ceiling is None or mention.value > ceiling:
                 result.violations.append(
                     Violation("proposal_exceeds_availability", 1, mention.sentence)
@@ -559,6 +602,12 @@ def validate_response(
                 )
 
     declared = set()
+    candidate_names = {
+        str(c.get("item_name", "")).lower()
+        for r in tool_results_this_turn
+        for c in r.output.get("candidates", [])
+        if isinstance(c, dict)
+    }
     for r in tool_results_this_turn:
         if r.name == "check_dietary_info" and r.ok:
             for word in r.output.get("contains", []) + r.output.get("may_contain", []):
@@ -571,6 +620,10 @@ def validate_response(
             if _has_disclaimer(sentence, match.start()):
                 continue
             if allergen == "allergens":
+                continue
+            if PRODUCT_NOUN_AFTER.match(sentence[match.end() :]):
+                continue
+            if any(match.group("allergen").lower() in name for name in candidate_names):
                 continue
             if allergen not in declared:
                 result.violations.append(Violation("ungrounded_presence", 1, sentence.strip()))

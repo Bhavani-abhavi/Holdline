@@ -43,7 +43,7 @@ ALLERGY_PATTERNS = [
     r"c(?:oe|e)liac",
     r"intoleran",
     r"epi.?pen",
-    r"\bcan'?t (?:have|eat|do)\b",
+    r"\bcan'?t (?:have|eat)\b",
     r"\bcannot (?:have|eat)\b",
     r"\bnot allowed\b",
     r"\breaction\b",
@@ -131,21 +131,68 @@ def check_dietary_info(conn: sqlite3.Connection, item_id: str) -> DietaryInfo:
     )
 
 
-def assess_request(dietary_text: str | None) -> DietaryAssessment:
+# A denial cancels only the clause it appears in. Matched against the whole clause
+# after leading discourse markers are stripped, so "and no allergies" is a denial
+# while "no nut allergies but she can't have dairy" is not.
+DENIAL_RE = re.compile(
+    r"^(?:no|nope|nah|none|nothing|not really|no allerg(?:y|ies)|no dietary (?:needs?|restrictions?|requirements?)|"
+    r"no (?:food )?(?:allergies|restrictions|issues|problems)|none (?:that i know of|at all|whatsoever)|"
+    r"(?:we'?re|i'?m|she'?s|he'?s|they'?re) (?:all )?(?:good|fine)|all good|nothing like that|"
+    r"no(?:,)? (?:nothing|none|we'?re good|i'?m good|all good))[.!]?$",
+    re.IGNORECASE,
+)
+DISCOURSE_MARKERS_RE = re.compile(
+    r"^(?:(?:and|so|plus|oh|well|yeah|yes|yep|just|um|uh|also|but|then|okay|ok)[,\s]+)+",
+    re.IGNORECASE,
+)
+CLAUSE_SPLIT_RE = re.compile(r"[,.;!?]+|\s+(?:and|but|plus)\s+", re.IGNORECASE)
+
+
+def _clauses(text: str) -> list[str]:
+    """Split on punctuation and conjunctions, strip leading discourse markers."""
+    out = []
+    for raw in CLAUSE_SPLIT_RE.split(text):
+        clause = DISCOURSE_MARKERS_RE.sub("", raw.strip()).strip()
+        if clause:
+            out.append(clause)
+    return out
+
+
+def assess_request(dietary_text: str | None, *, direct_answer: bool = True) -> DietaryAssessment:
     """Classify a caller's stated dietary need.
 
-    Allergy patterns win over preference patterns: "I'm vegan and allergic to
-    nuts" is an allergy. Empty or whitespace text is "none".
+    Works clause by clause: a denial ("no allergies") cancels only its own clause,
+    so "yes, around five, and no allergies" is "none" while "no nut allergies but
+    she can't have dairy" still escalates. Allergy wins over preference: "I'm vegan
+    and allergic to nuts" is an allergy.
+
+    Args:
+        direct_answer: True when the text answers the allergy question (a
+            `dietary_note`); unrecognised text is then a preference so the kitchen
+            still hears it. False for an arbitrary turn of conversation, where
+            unrecognised text means nothing dietary was raised.
     """
     text = (dietary_text or "").strip().lower()
     if not text:
         return DietaryAssessment(severity="none", requires_human=False)
-    for pattern in ALLERGY_PATTERNS:
-        if re.search(pattern, text):
-            return DietaryAssessment(severity="allergy", requires_human=True, matched=pattern)
-    for pattern in PREFERENCE_PATTERNS:
-        if re.search(pattern, text):
-            return DietaryAssessment(severity="preference", requires_human=False, matched=pattern)
-    # Unrecognised text is still a dietary note the caller chose to give. Treat it
-    # as a preference so it reaches staff verbatim; it does not block the hold.
+    saw_preference: str | None = None
+    saw_denial = False
+    for clause in _clauses(text):
+        if DENIAL_RE.match(clause):
+            saw_denial = True
+            continue
+        for pattern in ALLERGY_PATTERNS:
+            if re.search(pattern, clause):
+                return DietaryAssessment(severity="allergy", requires_human=True, matched=pattern)
+        if saw_preference is None:
+            for pattern in PREFERENCE_PATTERNS:
+                if re.search(pattern, clause):
+                    saw_preference = pattern
+    if saw_preference:
+        return DietaryAssessment(
+            severity="preference", requires_human=False, matched=saw_preference
+        )
+    if saw_denial or not direct_answer:
+        return DietaryAssessment(severity="none", requires_human=False)
+    # A direct answer we could not parse is still something the caller chose to say.
     return DietaryAssessment(severity="preference", requires_human=False, matched=None)
