@@ -1,0 +1,6 @@
+# Normalise line endings. The project is developed on Windows and runs in Linux
+# containers in Phase 8, so the repository stores LF and lets each checkout do
+# what its platform wants.
+* text=auto eol=lf
+*.sql  text eol=lf
+*.md   text eol=lf

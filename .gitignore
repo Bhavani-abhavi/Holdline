@@ -1,16 +1,48 @@
+# Secrets. Never commit the real file; .env.example documents every variable.
 .env
+.env.local
+
+# Virtual environments
+.venv/
+venv/
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Databases and generated data. The seeder rebuilds all of it.
+data/
 *.db
 *.db-wal
 *.db-shm
 *.duckdb
-data/
+*.duckdb.wal
+
+# Tooling caches
 .ruff_cache/
 .pytest_cache/
-.venv/
-*.egg-info/
-build/
-dist/
-evals/recordings/*.jsonl
-!evals/recordings/.gitkeep
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Phase 8 artifacts
+raw/
+target/
+dbt_packages/
+logs/
+airflow.db
+airflow.cfg
+webserver_config.py
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Raw eval run archives. RESULTS.md is the committed artifact and already quotes
+# every failure; these are for re-scoring a run without paying for it again.
+evals/runs/
