@@ -1,0 +1,137 @@
+# HoldLine build + tooling configuration.
+#
+# Dependencies are pinned to EXACT versions on purpose. A portfolio project that
+# cannot be installed two months after it was written is worthless, and `>=`
+# pins are how that happens. Versions are added phase by phase rather than all
+# at once, so that `pip install -e .` never pulls a library the code does not
+# yet use.
+
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "holdline"
+version = "0.1.0"
+description = "An AI voice assistant that reserves real inventory over the phone."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+
+dependencies = [
+    # Web layer. The API is the only front door; phone and browser both enter here.
+    "fastapi==0.142.0",
+    "uvicorn==0.54.0",
+    # Structured JSON logging. There is no `print()` in this codebase.
+    "structlog==26.1.0",
+    # Reads .env in development. Production passes real environment variables.
+    "python-dotenv==1.2.3",
+    # The IANA timezone database. NOT optional: Windows ships no system tz
+    # database, so `ZoneInfo("America/Chicago")` raises without this. Hold
+    # expiry times depend on it, so a missing tzdata is a correctness bug.
+    "tzdata==2026.4",
+    # The model provider. Phase 3 onward. Reached through exactly one function
+    # (`agent_manual.call_model`) so the vendor is swappable.
+    "anthropic==1.9.0",
+    # Phase 5. The manual loop in agent_manual.py is kept working beside it; the
+    # comparison between the two is the deliverable, so neither is a dependency of
+    # the other.
+    "langgraph==1.2.12",
+    "langgraph-checkpoint-sqlite==3.1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.16.9",
+    # httpx drives FastAPI's TestClient.
+    "httpx==0.28.1",
+    # Phase 7 reads the eval scenarios from YAML. A dev dependency, not a runtime
+    # one: the application never loads a scenario file.
+    "pyyaml==6.0.3",
+]
+
+[project.scripts]
+holdline-seed = "holdline.seed:main"
+holdline-serve = "holdline.run:main"
+
+[tool.setuptools.packages.find]
+# evals/ is deliberately outside src/: it is a development tool, not something a
+# deployment should install.
+where = ["src"]
+
+[tool.setuptools.package-data]
+# schema.sql ships inside the package so a clean install can create a database
+# without needing the source tree.
+holdline = ["schema.sql", "static/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # import sorting
+    "N",         # pep8 naming
+    "D",         # docstrings -- every module, class and public function
+    "UP",        # pyupgrade
+    "ANN",       # type annotations on every signature
+    "ASYNC",     # async correctness
+    "S",         # bandit security checks
+    "B",         # bugbear
+    "A",         # shadowed builtins
+    "C4",        # comprehensions
+    "DTZ",       # naive datetimes are a bug in a system that stores ISO 8601 UTC
+    "T20",       # no print() -- logging is structured
+    "PTH",       # pathlib over os.path
+    "SIM",       # simplifications
+    "ARG",       # unused arguments
+    "PL",        # pylint subset
+    "RUF",
+]
+ignore = [
+    "D203",    # conflicts with D211; we use "no blank line before class docstring"
+    "D213",    # conflicts with D212; we use "summary on the first line"
+    "ANN401",  # `Any` is occasionally the honest type for JSON payloads
+    "PLR0913", # some domain functions legitimately take many named fields
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["holdline"]
+# tests/helpers.py is imported by name from the tests directory, so it belongs
+# in the local-folder group rather than being mistaken for a dependency.
+known-local-folder = ["helpers", "conftest"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert (S101) and compare against literal expected values (PLR2004);
+# both are the point of a test. ARG001 fires on pytest fixtures, which are
+# requested by parameter name and used for their side effects -- `seeded_db` is
+# doing work even where the test body never mentions it. Docstrings are still
+# required: a test's docstring is where the behaviour it proves gets stated.
+# ARG002 fires on test doubles: a class implementing the Notifier Protocol must
+# accept the full signature even when a stub ignores most of it. S311 fires on
+# seeded random generators, which in a test are the mechanism that makes a
+# simulation reproducible.
+"tests/*" = ["S101", "PLR2004", "ARG001", "ARG002", "S311"]
+# N818 wants every exception name to end in "Error". `GuardrailViolation` and
+# `ApprovalRequired` are deliberate exceptions to that: they name domain events
+# that code routes on rather than faults, they are the names used throughout the
+# specification and the README, and renaming them would make the documentation
+# and the code disagree.
+"src/holdline/exceptions.py" = ["N818"]
+# The eval runner is a script meant to be run by hand, which is the one place the
+# project standard permits print(): its output IS the interface while a long run is
+# in progress, and routing it through structlog would bury the progress line.
+"evals/run_evals.py" = ["T201"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
